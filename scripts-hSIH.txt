@@ -1,0 +1,61 @@
+1.Difference analysis (Wilcoxon rank-sum test)
+library(WilcoxCV)
+########## Read data file
+data_path = "cs.txt"
+result_path = "wilcoxon_reslut_cs.txt"
+index_group_1 =1:20
+index_group_2 =21:43
+data = read.delim(data_path, row.names=1)
+########## Run wilcoxon test and save results
+feature_list = c("ID", "Mean_group1", "variance_group1", "std_group1", "Mean_group2", "variance_group2", "std_group2", "p", "q")
+matrix_result <- array(0, dim=c((nrow(data) + 1), length(feature_list)))
+matrix_result[1, ] = feature_list
+for (i in 1:nrow(data)){
+	group_1 = as.numeric(data[i, index_group_1])
+	group_2 = as.numeric(data[i, index_group_2])
+	result_wilcoxon = wilcox.test(group_1, group_2, )
+	p_wilcoxon = result_wilcoxon$p.value
+	matrix_result[i + 1, 1:length(feature_list)-1] = c(rownames(data[i, ]), mean(group_1), var(group_1), sd(group_1), mean(group_2), var(group_2), sd(group_2), p_wilcoxon)
+}
+matrix_result[2:(nrow(data)+1),length(feature_list)] = p.adjust(matrix_result[2:(nrow(data)+1),length(feature_list)-1], method = "fdr")
+write(t(matrix_result), file=result_path, ncolumns=length(feature_list), sep="\t")
+2.Heatmap (with pheatmap)
+z<-read.delim(file="clipboard",header=T,row.names=1,sep="\t")
+bk <- c(seq(-6,-0.1,by=0.01),seq(0,6,by=0.01)) 
+col_anno = data.frame(treatment=c("control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","control","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD","HSD"),row.names=colnames(z)) 
+row_anno = data.frame(phylum=c("Actinobacteria","Firmicutes","Proteobacteria","Bacteroidetes","Firmicutes","Firmicutes","Bacteroidetes","Bacteroidetes","Firmicutes","Actinobacteria","Firmicutes","Proteobacteria","Proteobacteria","Firmicutes","Firmicutes","Bacteroidetes","Firmicutes","Bacteroidetes","Proteobacteria","Bacteroidetes","Firmicutes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Proteobacteria","Bacteroidetes","Proteobacteria","Proteobacteria","Firmicutes"), row.names=rownames(z))
+pheatmap(z,scale="row",cluster_cols=FALSE,color = c(colorRampPalette(colors = c("blue","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),legend_breaks=seq(-6,6,2),breaks=bk,cellwidth = 6,cellheight = 10,annotation_col=col_anno,annotation_row=row_anno,show_colnames = FALSE)
+3.Correlation analysis and heatmap (with pheatmap)
+library(psych)
+library(stringr)
+library(Hmisc)
+z<-scale(read.delim(file="clipboard",header=T,row.names=1,sep="\t"))
+correlation_results<-corr.test(z,method="spearman",adjust="fdr")
+r<-correlation_results$r
+p<-correlation_results$p
+write.csv(r,"D:/r.csv",row.names =T)
+write.csv(p,"D:/p.csv",row.names =T)
+
+Library(pheatmap)
+r<- read.delim(file="clipboard",header=T,row.names=1,sep="\t")
+aa=pheatmap(r)
+order_row = aa$tree_row$order
+order_col = aa$tree_col$order
+rr= data.frame(r[order_row,order_col]) 
+rr= data.frame(rownames(rr),rr,check.names =F) 
+colnames(rr)[1] = "id"   
+write.table(rr,"rr.txt", row.names=FALSE,quote = FALSE,sep='\t')
+
+rr<-read.delim(file="clipboard",header=T,row.names=1,sep="\t")
+pp<-read.delim(file="clipboard",header=T,row.names=1,sep="\t")
+sig_lable<-function(x){ifelse(x<0.001, "#",ifelse(x<0.01, "+",ifelse(x<0.05, "*","")))}
+sig_matrix<-sig_lable(pp)
+bk <- c(seq(-1,-0.1,by=0.01),seq(0,1,by=0.01))#调整bar的位置
+col_anno = data.frame(phylum=c("Proteobacteria","Proteobacteria","Proteobacteria","Proteobacteria","Firmicutes","Actinobacteria","Actinobacteria","Firmicutes","Proteobacteria","Firmicutes","Firmicutes","Bacteroidetes","Firmicutes","Firmicutes","Firmicutes","Firmicutes","Bacteroidetes","Bacteroidetes","Proteobacteria","Proteobacteria","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Bacteroidetes","Firmicutes","Firmicutes","BP","BP"), row.names=colnames(rr))
+pheatmap(rr, cellwidth = 14,cellheight = 14,fontsize = 10,display_numbers=sig_matrix,annotation_col=col_anno,cluster_cols = F,color = c(colorRampPalette(colors = c("blue","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),legend_breaks=seq(-1,1,0.5),breaks=bk,cluster_rows = T,fontsize_number = 20,show_rownames = F,show_colnames =F,number_color = "yellow")
+
+4.Fit Regression Model (lm;spearman)
+Library(ggplot2)
+library(ggpubr)
+dat <- read.table("lm.csv",sep=",",header = TRUE)
+ggplot(data=dat, aes(x= Psychrobacter, y= Corticosterone))+geom_point(color="black")+stat_smooth(method="lm",se=FALSE)+stat_cor(data=dat, method = "spearman")
