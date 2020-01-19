@@ -59,3 +59,97 @@ Library(ggplot2)
 library(ggpubr)
 dat <- read.table("lm.csv",sep=",",header = TRUE)
 ggplot(data=dat, aes(x= Psychrobacter, y= Corticosterone))+geom_point(color="black")+stat_smooth(method="lm",se=FALSE)+stat_cor(data=dat, method = "spearman")
+
+5.pca <- read.delim('pca.txt', stringsAsFactors = F)
+group_border <- ddply(pca, 'group', function(df) df[chull(df[[3]], df[[4]]), ])
+pca_plot <- ggplot(pca, aes(PC1, PC2, fill = group, color = group)) +
+geom_polygon(data = group_border, alpha = 0.3, show.legend = F) +
+geom_point() +
+labs(x = paste('PC1(22%)'), y = paste('PC2(14%)'))
+ggsave('PCA.png', pca_plot, width = 6, height = 5.5)
+
+6.The work before importing into qiime2(2019.01)
+1).Decompress the fastq.gz file:
+   for i in *.gz;do gunzip $i  >done
+2).Quality inspection(example):
+   /home/ngs/soft/fastp/fastp -i 5_HS032802_R1_001.fastq -I 5_HS032802_R2_001.fastq -o 5_HS032802_R1_001.fq -O 5_HS032802_R2_001.fq
+3).Merging double-ended sequences to get the "*.fqjion" file(example):
+   /home/ngs/soft/fastq-jion/fastq-join -m 10 5_HS032802_R1_001.fq B5_HS032802_R2_001.fq -o 5_HS032802.fq
+4).Compressing the "*.fqjion" file:
+   for i in *.gz;do gzip $i  > done
+Analysis of sequencing data in qiime2
+1).Importing data to qiime2,2017.12:
+   qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path se-33-manifest \
+  --output-path single-end-demux.qza \
+  --source-format SingleEndFastqManifestPhred33
+2).Visualize the data uploaded:
+   qiime demux summarize \
+  --i-data single-end-demux.qza \
+  --o-visualization demux.qzv
+3).Sequence quality control and feature table construction (DADA2):
+   qiime dada2 denoise-single \
+  --i-demultiplexed-seqs single-end-demux.qza \
+  --p-trim-left 0 \
+  --p-trunc-len 420 \
+  --o-representative-sequences rep-seqs-dada2.qza \
+  --o-table table-dada2.qza
+4).FeatureTable and FeatureData summaries:
+   qiime feature-table summarize \
+  --i-table table-dada2.qza \
+  --o-visualization table.qzv \
+  --m-sample-metadata-file sample-metadata.tsv
+   qiime feature-table tabulate-seqs \
+  --i-data rep-seqs-dada2.qza \
+  --o-visualization rep-seqs.qzv
+5).Generate a tree for phylogenetic diversity analyses:
+   qiime alignment mafft \
+  --i-sequences rep-seqs-dada2.qza \
+  --o-alignment aligned-rep-seqs.qza
+   qiime alignment mask \
+  --i-alignment aligned-rep-seqs.qza \
+  --o-masked-alignment masked-aligned-rep-seqs.qza
+   qiime phylogeny fasttree \
+  --i-alignment masked-aligned-rep-seqs.qza \
+  --o-tree unrooted-tree.qza
+   qiime phylogeny midpoint-root \
+  --i-tree unrooted-tree.qza \
+  --o-rooted-tree rooted-tree.qza
+6).Alpha and beta diversity analysis:
+   qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny rooted-tree.qza \
+  --i-table table-dada2 \
+  --p-sampling-depth 13897 \
+  --m-metadata-file sample-metadata.tsv \
+  --output-dir core-metrics-results
+   qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/unweighted_unifrac_distance_matrix.qza \
+  --m-metadata-file sample-metadata.tsv \
+  --m-metadata-category BodySite \
+  --o-visualization core-metrics-results/unweighted-unifrac-body-site-significance.qzv \
+  --p-pairwise
+   qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/faith_pd_vector.qza \
+  --m-metadata-file sample-metadata.tsv \
+  --o-visualization core-metrics-results/faith-pd-group-significance.qzv
+   qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/evenness_vector.qza \
+  --m-metadata-file sample-metadata.tsv \
+  --o-visualization core-metrics-results/evenness-group-significance.qzv
+7).Alpha rarefaction plotting:
+   qiime diversity alpha-rarefaction \
+  --i-table table.qza \
+  --i-phylogeny rooted-tree.qza \
+  --p-max-depth 35000 \
+  --m-metadata-file sample-metadata.tsv \
+  --o-visualization alpha-rarefaction.qzv
+8).Taxonomic analysis:
+   wget -O "gg-13-8-99-515-806-nb-classifier.qza" "https://data.qiime2.org/2017.12/common/gg-13-8-99-515-806-nb-classifier.qza"
+   qiime feature-classifier classify-sklearn \
+  --i-classifier gg-13-8-99-515-806-nb-classifier.qza \
+  --i-reads rep-seqs-dada2.qza \
+  --o-classification taxonomy.qza
+   qiime metadata tabulate \
+  --m-input-file taxonomy.qza \
+  --o-visualization taxonomy.qzv
